@@ -87,6 +87,14 @@ class YoubotTrajectoryPlanning(object):
 
         # Your code starts here ------------------------------
 
+        joint_data = [] # create list for joint data 
+        for topic, msg, t in bag.read_messages(topics='joint_data'):
+            joint_data.append(msg.position) #read position from bag and append to the list
+
+        for i in range(4): #this adds the joint data from the list to the target_joint_positions
+            target_joint_positions[:,i+1] = joint_data[i]
+            target_cart_tf[:,:,i+1] = self.kdl_youbot.forward_kinematics(target_joint_positions[:,i+1]) #calc fkine and add to tf 
+
         # Your code ends here ------------------------------
 
         # Close the bag
@@ -111,6 +119,9 @@ class YoubotTrajectoryPlanning(object):
         """
 
         # Your code starts here ------------------------------
+        position = np.zeros((3,5))
+        for i in range(position.shape[1]):
+            position[:,i] = checkpoints_tf[0:3,3,i]
 
         # Your code ends here ------------------------------
 
