@@ -92,7 +92,7 @@ class YoubotTrajectoryPlanning(object):
             joint_data.append(msg.position) #read position from bag and append to the list
 
         for i in range(4): #this adds the joint data from the list to the target_joint_positions
-            target_joint_positions[:,i+1] = joint_data[i]
+            target_joint_positions[:,i+1] = joint_data[i] #skips the first one as it is already defined as initial pos
             target_cart_tf[:,:,i+1] = self.kdl_youbot.forward_kinematics(target_joint_positions[:,i+1]) #calc fkine and add to tf 
 
         # Your code ends here ------------------------------
@@ -119,9 +119,54 @@ class YoubotTrajectoryPlanning(object):
         """
 
         # Your code starts here ------------------------------
-        position = np.zeros((3,5))
+        position = np.zeros((3,5)) # 5 x y z positions 
+        # this returns list of end-effector position from the tf matrix
         for i in range(position.shape[1]):
-            position[:,i] = checkpoints_tf[0:3,3,i]
+            position[:,i] = checkpoints_tf[0:3,3,i] 
+
+        distance = np.zeros((5,5))
+        # this calculates the distance by finding L2 norm of end effector pos
+        for i in range(distance.shape[1]):
+            for j in range(distance.shape[1]):
+                distance[i,j] = np.linalg.norm(position[:,i]-position[:,j])
+                # this returns a matrix containing the distance from the init pos to other pos
+                
+        node = [] #create list for node
+        dist = [] # create a list for distance
+        # path = []
+        for i in range(distance.shape[1]):
+            if i != 0:
+                node.append(i) # this changes the list with [1 2 3 4]
+
+        permutation=permutations(node) # this creates a permutation for the node list ie 1234 1243..
+        path = np.array(list(permutation)) # change the permutaion into a list and put it in an array
+        # path.append(list(permutation))
+
+        for perm in path: # create loop for each permutation
+
+            current_dist = 0 	# store current distance as 0 at initial pos
+            # path.append(list(permutation))
+            # compute current path weight
+            k = 0
+            for j in perm: # loop to add up all the distance of the permutation
+                current_dist += distance[k][j]
+                k = j
+            dist.append(current_dist)
+            # dist[:,i] = current_dist
+            # path.append(list(permutation))
+
+        dis_val = np.zeros((24,1)) # convert distance list to an array although not necessary
+        for i in range(24): 
+            dis_val[i,:] = dist[i]
+
+        min_dist = np.min(dis_val) #find minimum distance from the dis_val array
+        min_index = [i for i, x in enumerate(dis_val) if x == min_dist] #find index of mim_dist
+
+        min_path = path[min_index] #find the corresponding path to the minimum distance
+        sorted_order = np.append(0, min_path)
+        # min_index = dist.index(min_dist)
+
+        # print(min_path)
 
         # Your code ends here ------------------------------
 
@@ -172,6 +217,9 @@ class YoubotTrajectoryPlanning(object):
         """
 
         # Your code starts here ------------------------------
+
+
+        tfs = self.decoupled_rot_and_trans(self, checkpoint_a_tf, checkpoint_b_tf, num_points)
         
         # Your code ends here ------------------------------
        
@@ -190,6 +238,21 @@ class YoubotTrajectoryPlanning(object):
         """
 
         # Your code starts here ------------------------------
+
+        t = 1/num_points
+        p_s = checkpoint_a_tf[0:3,3] 
+        p_f = checkpoint_b_tf[0:3,3] 
+
+        R_s = checkpoint_a_tf[0:3,0:3] 
+        R_f = checkpoint_b_tf[0:3,0:3] 
+        tfs = np.zeros((4,4,num_points))
+        for time in range(num_points):
+            Pt = p_s + time*(p_f-p_s)
+            Rt = R_s*scipy.linalg.expm(scipy.linalg.logm(np.dot(np.linalg.inv(R_s),R_f))*time)
+
+            tf = np.column_stack((Rt, Pt))
+            bot_row = np.array([0,0,0,1])
+            tfs[:,:,time] = np.vstack((tf,bot_row))
 
         # Your code ends here ------------------------------
 
