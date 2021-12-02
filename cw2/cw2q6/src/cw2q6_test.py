@@ -131,6 +131,7 @@ min_index = [i for i, x in enumerate(dis_val) if x == min_distance]
 
 min_path = path[min_index]
 min_path = np.append(0, min_path)
+
 # min_path = np.array(0,min_path)
 # min_index = dist.index(min_distance)
 
@@ -138,7 +139,7 @@ assert isinstance(min_path, np.ndarray)
 assert min_path.shape == (5,)
 assert isinstance(min_distance, float)
 
-# print(min_path.shape)
+# print(min_path)
 
 # path_and_dis = np.column_stack((path, dis_val))
 # print(path_and_dis)
@@ -148,26 +149,75 @@ assert isinstance(min_distance, float)
 # print(dist)
 # print(min_distance)
 
-num_points = 3
-checkpoint_a_tf = target_cart_tf[:, :, 0]
-checkpoint_b_tf = target_cart_tf[:, :, 4]
+def decoupled_rot_and_trans(checkpoint_a_tf, checkpoint_b_tf, num_points):
+	"""This function takes two checkpoint transforms and computes the intermediate transformations
+	that follow a straight line path by decoupling rotation and translation.
+	Args:
+		checkpoint_a_tf (np.ndarray): 4x4 transformation describing pose of checkpoint a.
+		checkpoint_b_tf (np.ndarray): 4x4 transformation describing pose of checkpoint b.
+		num_points (int): Number of intermediate points between checkpoint a and checkpoint b.
+	Returns:
+		tfs: 4x4x(num_points) homogeneous transformations matrices describing the full desired
+		poses of the end-effector position from checkpoint a to checkpoint b following a linear path.
+	"""
 
-t = 1/num_points
-p_s = checkpoint_a_tf[0:3,3] 
-p_f = checkpoint_b_tf[0:3,3] 
+	# Your code starts here ------------------------------
 
-R_s = checkpoint_a_tf[0:3,0:3] 
-R_f = checkpoint_b_tf[0:3,0:3] 
-tfs = np.zeros((4,4,num_points))
-# kyy= np.log(np.dot(np.linalg.inv(R_s),R_f))
-# print(kyy)
-for time in range(num_points):
-	Pt = p_s + time*(p_f-p_s)
-	Rt = R_s*scipy.linalg.expm(scipy.linalg.logm(np.dot(np.linalg.inv(R_s),R_f))*time)
+	t = 1/num_points
+	p_s = checkpoint_a_tf[0:3,3] 
+	p_f = checkpoint_b_tf[0:3,3] 
 
-	tf = np.column_stack((Rt, Pt))
-	bot_row = np.array([0,0,0,1])
-	tfs[:,:,time] = np.vstack((tf,bot_row))
+	R_s = checkpoint_a_tf[0:3,0:3] 
+	R_f = checkpoint_b_tf[0:3,0:3] 
+	tfs = np.zeros((4,4,num_points))
+	for time in range(num_points):
+		Pt = p_s + time*(p_f-p_s)
+		Rt = R_s*scipy.linalg.expm(scipy.linalg.logm(np.dot(np.linalg.inv(R_s),R_f))*time)
+
+		tf = np.column_stack((Rt, Pt))
+		bot_row = np.array([0,0,0,1])
+		tfs[:,:,time] = np.vstack((tf,bot_row))
+
+	# Your code ends here ------------------------------
+
+	return tfs
+
+
+num_points = 5
+full_checkpoint_tfs = np.zeros((4,4,5*num_points))
+for i in range(4):
+	indexa = min_path[i]
+	indexb = min_path[i+1]
+	checkpoint_a_tf = target_cart_tf[:,:,indexa]
+	checkpoint_b_tf = target_cart_tf[:,:,i+indexb]
+	tfs = decoupled_rot_and_trans(checkpoint_a_tf, checkpoint_b_tf, num_points)
+	
+	for j in range(5*num_points):
+		full_checkpoint_tfs[:,:,j] = tfs[:,:,i]
+
+print(full_checkpoint_tfs.shape)
+
+# # num_points = 3
+# checkpoint_a_tf = target_cart_tf[:, :, 0]
+# checkpoint_b_tf = target_cart_tf[:, :, 4]
+
+# t = 1/num_points
+# p_s = checkpoint_a_tf[0:3,3] 
+# p_f = checkpoint_b_tf[0:3,3] 
+
+# R_s = checkpoint_a_tf[0:3,0:3] 
+# R_f = checkpoint_b_tf[0:3,0:3] 
+# tfs = np.zeros((4,4,num_points))
+# # kyy= np.log(np.dot(np.linalg.inv(R_s),R_f))
+# # print(kyy)
+# for time in range(num_points):
+# 	Pt = p_s + time*(p_f-p_s)
+# 	Rt = R_s*scipy.linalg.expm(scipy.linalg.logm(np.dot(np.linalg.inv(R_s),R_f))*time)
+
+# 	tf = np.column_stack((Rt, Pt))
+# 	bot_row = np.array([0,0,0,1])
+# 	tfs[:,:,time] = np.vstack((tf,bot_row))
+# # print(tfs[:,:,1])
 
 
 # r = target_cart_tf[0:3,0:3,1]
@@ -179,5 +229,4 @@ for time in range(num_points):
 
 # print(r)
 # print(p)
-print(tfs[:,:,1])
 

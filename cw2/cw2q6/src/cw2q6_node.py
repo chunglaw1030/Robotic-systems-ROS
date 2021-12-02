@@ -218,9 +218,18 @@ class YoubotTrajectoryPlanning(object):
 
         # Your code starts here ------------------------------
 
+        num_points = 5 # define number of points
+        full_checkpoint_tfs = np.zeros((4,4,5*num_points)) # create an empty 4x4x(5xnum_points) matrix
+        for i in range(4): # extract the index i.e. 0 4 3 2 1
+            indexa = sorted_checkpoint_idx[i]
+            indexb = sorted_checkpoint_idx[i+1]
+            checkpoint_a_tf = target_checkpoint_tfs[:,:,indexa] # pick the corresponding tf using the index
+            checkpoint_b_tf = target_checkpoint_tfs[:,:,i+indexb]
+            tfs = self.decoupled_rot_and_trans(self, checkpoint_a_tf, checkpoint_b_tf, num_points)
+            # call function which returns 4x4xnum_point tf
+            for j in range(5*num_points):
+                full_checkpoint_tfs[:,:,j] = tfs[:,:,i]
 
-        tfs = self.decoupled_rot_and_trans(self, checkpoint_a_tf, checkpoint_b_tf, num_points)
-        
         # Your code ends here ------------------------------
        
         return full_checkpoint_tfs
