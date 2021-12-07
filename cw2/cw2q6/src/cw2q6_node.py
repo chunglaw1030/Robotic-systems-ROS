@@ -89,7 +89,7 @@ class YoubotTrajectoryPlanning(object):
 
         joint_data = [] # create list for joint data 
         for topic, msg, t in bag.read_messages(topics='joint_data'):
-            joint_data.append(msg.position) #read position from bag and append to the list
+            joint_data.append(msg.position) #read position from bag and append to the list , 5x4
 
         for i in range(4): #this adds the joint data from the list to the target_joint_positions
             target_joint_positions[:,i+1] = joint_data[i] #skips the first one as it is already defined as initial pos
@@ -163,7 +163,7 @@ class YoubotTrajectoryPlanning(object):
         min_index = [i for i, x in enumerate(dis_val) if x == min_dist] #find index of mim_dist
 
         min_path = path[min_index] #find the corresponding path to the minimum distance
-        sorted_order = np.append(0, min_path)
+        sorted_order = np.append(0, min_path) #add the 0 for initial position
         # min_index = dist.index(min_dist)
 
         # print(min_path)
@@ -213,22 +213,33 @@ class YoubotTrajectoryPlanning(object):
             num_points (int): Number of intermediate points between checkpoints.
         Returns:
             full_checkpoint_tfs: 4x4x(5xnum_points) homogeneous transformations matrices describing the full desired
-            poses of the end-effector position.
+            poses of the end-effector position. 4x4x(4xnum_points +5)??
         """
 
         # Your code starts here ------------------------------
 
-        num_points = 5 # define number of points
-        full_checkpoint_tfs = np.zeros((4,4,5*num_points)) # create an empty 4x4x(5xnum_points) matrix
-        for i in range(4): # extract the index i.e. 0 4 3 2 1
-            indexa = sorted_checkpoint_idx[i]
+        # num_points = 5
+        full_checkpoint_tfs = np.zeros((4,4,5,4))
+        # full_checkpoint_tfs = []
+        # for j in range(5*num_points):
+        # for j in range(4):
+        # min_path = [0 4 3 2 1]
+
+        for i in range(4):
+            indexa = sorted_checkpoint_idx[i]    # retreive order of index 
             indexb = sorted_checkpoint_idx[i+1]
-            checkpoint_a_tf = target_checkpoint_tfs[:,:,indexa] # pick the corresponding tf using the index
-            checkpoint_b_tf = target_checkpoint_tfs[:,:,i+indexb]
-            tfs = self.decoupled_rot_and_trans(self, checkpoint_a_tf, checkpoint_b_tf, num_points)
-            # call function which returns 4x4xnum_point tf
-            for j in range(5*num_points):
-                full_checkpoint_tfs[:,:,j] = tfs[:,:,i]
+            checkpoint_a_tf = target_checkpoint_tfs[:,:,indexa] # assign intermediate point 
+            checkpoint_b_tf = target_checkpoint_tfs[:,:,indexb]
+            tfs = self.decoupled_rot_and_trans(checkpoint_a_tf, checkpoint_b_tf, num_points) 
+
+                # tfs = np.dsplit(tfs, num_points)
+
+            full_checkpoint_tfs[:,:,:,i]=tfs # put the 4x4xnum_points in an array of 4 dim
+
+        full_checkpoint_tfs = np.block([full_checkpoint_tfs[:,:,:,0],   #combine the 4 dims into 3 dim 
+                                        full_checkpoint_tfs[:,:,:,1],
+                                        full_checkpoint_tfs[:,:,:,2],
+                                        full_checkpoint_tfs[:,:,:,3]])
 
         # Your code ends here ------------------------------
        
@@ -248,21 +259,25 @@ class YoubotTrajectoryPlanning(object):
 
         # Your code starts here ------------------------------
 
-        t = 1/num_points
+        # t = 1/num_points
         p_s = checkpoint_a_tf[0:3,3] 
         p_f = checkpoint_b_tf[0:3,3] 
 
         R_s = checkpoint_a_tf[0:3,0:3] 
         R_f = checkpoint_b_tf[0:3,0:3] 
         tfs = np.zeros((4,4,num_points))
-        for time in range(num_points):
-            Pt = p_s + time*(p_f-p_s)
-            Rt = R_s*scipy.linalg.expm(scipy.linalg.logm(np.dot(np.linalg.inv(R_s),R_f))*time)
+        time = np.linspace(0,1,num=num_points)
 
-            tf = np.column_stack((Rt, Pt))
+        for points in range(num_points): 
+            # for time in np.linspace(0,1,num=num_points): 
+
+            Pt = p_s + time[points]*(p_f-p_s)
+            Rt = R_s*scipy.linalg.expm(scipy.linalg.logm(np.dot(np.linalg.inv(R_s),R_f))*time[points])
+            # Pt = p_s 
+            # Rt = R_s
+            tf_top = np.column_stack((Rt, Pt))
             bot_row = np.array([0,0,0,1])
-            tfs[:,:,time] = np.vstack((tf,bot_row))
-
+            tfs[:,:,points] = np.vstack((tf_top,bot_row))
         # Your code ends here ------------------------------
 
         return tfs
@@ -280,7 +295,18 @@ class YoubotTrajectoryPlanning(object):
         """
         
         # Your code starts here ------------------------------
+        
+        n = full_checkpoint_tfs.shape[2]        
+        q_checkpoints = np.zeros((5, n))
+        # q_checkpoints = np.append(init_joint_position)
+        q0 = init_joint_position
+        for i in range(n):
 
+            position = self.ik_position_only(self, full_checkpoint_tfs[:,:,i], q0)
+            q0 = full_checkpoint_tfs[:,:,i]
+            q_checkpoints = np.append(position.q)
+
+        # q_checkpoints = np.append(position)
         # Your code ends here ------------------------------
 
         return q_checkpoints
@@ -299,7 +325,15 @@ class YoubotTrajectoryPlanning(object):
         # Jacobian that will affect the position of the error.
 
         # Your code starts here ------------------------------
-        
+        alpha = 1
+        Pd = pose[:3, 3].ravel()
+        q = q0
+        J = YoubotKinematicKDL.get_jacobian(q0)[:3, :]
+        # Take only first 3 rows as position only solution.
+        P = np.array(YoubotKinematicKDL.forward_kinematics(q0))[:3, -1]
+        e = Pd - P.ravel()
+        q += alpha * np.matmul(J.T, e)
+        error = np.linalg.norm(e)
         # Your code ends here ------------------------------
 
         return q, error

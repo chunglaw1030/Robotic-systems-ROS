@@ -75,7 +75,7 @@ for i in range(distance.shape[1]):
         # distance[:,i] = diff
 
 
-
+# print(np.array(joint_data))
 # print(distance)
 # print(target_cart_tf[:,:,0])
 # print(target_cart_tf[:,:,1])
@@ -121,9 +121,15 @@ for perm in path: # create loop for each permutation
 	# dist[:,i] = current_pathweight
 	# path.append(list(permutation))
 
+# dis_val = np.zeros((24,1)) # convert distance list to an array although not necessary
+# for i in range(24): 
+# 	dis_val[i,:] = dist[i]
+
 dis_val = np.zeros((24,1)) # convert distance list to an array although not necessary
 for i in range(24): 
 	dis_val[i,:] = dist[i]
+
+# dis_val = np.array(dist)
 
 min_distance = np.min(dis_val) #find minimum dis
 min_index = [i for i, x in enumerate(dis_val) if x == min_distance]
@@ -139,7 +145,7 @@ assert isinstance(min_path, np.ndarray)
 assert min_path.shape == (5,)
 assert isinstance(min_distance, float)
 
-# print(min_path)
+# print(dis_val[6])
 
 # path_and_dis = np.column_stack((path, dis_val))
 # print(path_and_dis)
@@ -170,32 +176,176 @@ def decoupled_rot_and_trans(checkpoint_a_tf, checkpoint_b_tf, num_points):
 	R_s = checkpoint_a_tf[0:3,0:3] 
 	R_f = checkpoint_b_tf[0:3,0:3] 
 	tfs = np.zeros((4,4,num_points))
-	for time in range(num_points):
-		Pt = p_s + time*(p_f-p_s)
-		Rt = R_s*scipy.linalg.expm(scipy.linalg.logm(np.dot(np.linalg.inv(R_s),R_f))*time)
+	time = np.linspace(0,1,num=num_points)
 
-		tf = np.column_stack((Rt, Pt))
+	for points in range(num_points): 
+		# for time in np.linspace(0,1,num=num_points): 
+
+		Pt = p_s + time[points]*(p_f-p_s)
+		Rt = R_s*scipy.linalg.expm(scipy.linalg.logm(np.dot(np.linalg.inv(R_s),R_f))*time[points])
+		# Pt = p_s 
+		# Rt = R_s
+		tf_top = np.column_stack((Rt, Pt))
 		bot_row = np.array([0,0,0,1])
-		tfs[:,:,time] = np.vstack((tf,bot_row))
+		tfs[:,:,points] = np.vstack((tf_top,bot_row))
 
 	# Your code ends here ------------------------------
 
 	return tfs
 
 
+# num_points = 5
+# full_checkpoint_tfs = np.empty((4,4,0))
+# # full_checkpoint_tfs = []
+# # for j in range(5*num_points):
+# # for j in range(4):
+# for i in range(4):
+# 	indexa = min_path[i]
+# 	indexb = min_path[i+1]
+# 	checkpoint_a_tf = target_cart_tf[:,:,indexa]
+# 	checkpoint_b_tf = target_cart_tf[:,:,i+indexb]
+# 	tfs = decoupled_rot_and_trans(checkpoint_a_tf, checkpoint_b_tf, num_points)
+
+# 	for j in range(4):
+# 		full_checkpoint_tfs = np.dstack((full_checkpoint_tfs, tfs[:,:,j]))
+
+# 	# 	# for j in range(5*num_points):
+# 	# full_checkpoint_tfs[:,:,j] = tfs[:,:,i]
+
+# print(full_checkpoint_tfs.shape)
+# print(full_checkpoint_tfs[:,:,0])
+# print(target_cart_tf[:,:,4])
+
+#
 num_points = 5
-full_checkpoint_tfs = np.zeros((4,4,5*num_points))
+full_checkpoint_tfs = np.zeros((4,4,5,4))
+# full_checkpoint_tfs = []
+# for j in range(5*num_points):
+# for j in range(4):
+# min_path = [0 4 3 2 1]
+
 for i in range(4):
 	indexa = min_path[i]
 	indexb = min_path[i+1]
 	checkpoint_a_tf = target_cart_tf[:,:,indexa]
-	checkpoint_b_tf = target_cart_tf[:,:,i+indexb]
+	checkpoint_b_tf = target_cart_tf[:,:,indexb] ## 03:28 am changed
 	tfs = decoupled_rot_and_trans(checkpoint_a_tf, checkpoint_b_tf, num_points)
-	
-	for j in range(5*num_points):
-		full_checkpoint_tfs[:,:,j] = tfs[:,:,i]
 
-print(full_checkpoint_tfs.shape)
+		# tfs = np.dsplit(tfs, num_points)
+
+	full_checkpoint_tfs[:,:,:,i]=tfs
+
+full_checkpoint_tfs = np.block([full_checkpoint_tfs[:,:,:,0],
+								full_checkpoint_tfs[:,:,:,1],
+								full_checkpoint_tfs[:,:,:,2],
+								full_checkpoint_tfs[:,:,:,3]])
+
+
+# full_checkpoint_tfs = np.squeeze(full_checkpoint_tfs)
+
+# full_checkpoint_tfs.reshape(4,4,20)
+
+	# for j in range (4):
+	# 	full_checkpoint_tfs[:,:,j] = tfs
+# full_checkpoint_tfs = np.concatenate(full_checkpoint_tfs)
+# full_checkpoint_tfs = np.dstack(full_checkpoint_tfs).reshape(4,4,20)
+# full_checkpoint_tfs.reshape(4,4,20)
+
+
+# 	for j in range(4):
+# 		full_checkpoint_tfs = np.dstack((full_checkpoint_tfs, tfs[:,:,j]))
+
+# for j in range(5*num_points):
+# 	full_checkpoint_tfs[:,:,j] = tfs[:,:,i]
+
+# full_checkpoint_tfs
+# print(min_path)
+# print(target_cart_tf[:,:,1])
+# print(full_checkpoint_tfs[:,:,19])
+# print(full_checkpoint_tfs.shape)
+# print(full_checkpoint_tfs[:,:,4])
+# print (np.array(tfs).shape)
+# print(tfs.shape)
+
+#
+def ik_position_only(self, pose, q0):
+	"""This function implements position only inverse kinematics.
+	Args:
+		pose (np.ndarray, 4x4): 4x4 transformations describing the pose of the end-effector position.
+		q0 (np.ndarray, 5x1):A 5x1 array for the initial starting point of the algorithm.
+	Returns:
+		q (np.ndarray, 5x1): The IK solution for the given pose.
+		error (float): The Cartesian error of the solution.
+	"""
+	# Some useful notes:
+	# We are only interested in position control - take only the position part of the pose as well as elements of the
+	# Jacobian that will affect the position of the error.
+
+	# Your code starts here ------------------------------
+	alpha = 1
+	Pd = pose[:3, 3].ravel()
+	q = q0
+	J = YoubotKinematicKDL.get_jacobian(q0)[:3, :]
+	# Take only first 3 rows as position only solution.
+	P = np.array(YoubotKinematicKDL.forward_kinematics(q0))[:3, -1]
+	e = Pd - P.ravel()
+	q += alpha * np.matmul(J.T, e)
+	error = np.linalg.norm(e)
+	# Your code ends here ------------------------------
+
+	return q, error
+
+n = full_checkpoint_tfs.shape[2]        
+q_checkpoints = np.zeros((5, n))
+# q_checkpoints = np.append(init_joint_position)
+q0 = init_joint_position
+for i in range(n):
+
+	position = self.ik_position_only(self, full_checkpoint_tfs[:,:,i], q0)
+	q0 = full_checkpoint_tfs[:,:,i]
+	q_checkpoints = np.append(position.q)
+
+
+
+
+#
+# num_points = 5
+
+# full_checkpoint_tfs = []
+# for i in range(4):
+# 	indexa = min_path[i]
+# 	indexb = min_path[i+1]
+# 	checkpoint_a_tf = target_cart_tf[:,:,indexa]
+# 	checkpoint_b_tf = target_cart_tf[:,:,i+indexb]
+# 	tfs = decoupled_rot_and_trans(checkpoint_a_tf, checkpoint_b_tf, num_points)
+# 	full_checkpoint_tfs.append(tfs)
+# 	# 	# for j in range(5*num_points):
+# 	# full_checkpoint_tfs[:,:,j] = tfs[:,:,i]
+
+# full_checkpoint_tfs = np.array(list(full_checkpoint_tfs))
+# # full_checkpoint_tfs.resize((4,4,20))
+
+# # for i in range(4):
+# # 	full_checkpoint_tfs = np.vstack()
+
+# # full_checkpoint_tfs = np.block([full_checkpoint_tfs[:,:,:,0],
+# # 								full_checkpoint_tfs[:,:,:,1],
+# # 								full_checkpoint_tfs[:,:,:,2],
+# # 								full_checkpoint_tfs[:,:,:,3],
+# # 								full_checkpoint_tfs[:,:,:,4]])
+
+
+# # print(tfs.shape)
+# print(full_checkpoint_tfs.shape)
+# print(full_checkpoint_tfs[:,:,:,0])
+# # print(full_checkpoint_tfs[:,:,:,1])
+# print(target_cart_tf[:,:,0])
+#
+
+
+# print(full_checkpoint_tfs.shape)
+# print(target_cart_tf.shape)
+# print(full_checkpoint_tfs.shape)
 
 # # num_points = 3
 # checkpoint_a_tf = target_cart_tf[:, :, 0]
