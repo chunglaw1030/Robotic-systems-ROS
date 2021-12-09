@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
+import scipy as scipy
 from scipy.linalg import expm
 from scipy.linalg import logm
 import rospy
@@ -54,7 +55,31 @@ class YoubotTrajectoryPlanning(object):
         # 5. Create a JointTrajectory message.
 
         # Your code starts here ------------------------------
+        target_cart_tf, target_joint_positions = self.load_targets()
+        checkpoints_tf = target_cart_tf
+        sorted_order , min_dist = self.get_shortest_path( checkpoints_tf)
+        sorted_checkpoint_idx = sorted_order
+        target_checkpoint_tfs = checkpoints_tf
+        num_points = 3
+        full_checkpoint_tfs = self.intermediate_tfs( sorted_checkpoint_idx, target_checkpoint_tfs, num_points)
+        init_joint_position = target_joint_positions[:, 0]
+        q_checkpoints = self.full_checkpoints_to_joints( full_checkpoint_tfs, init_joint_position)
 
+        rospy.sleep(2.0)
+
+        self.publish_traj_tfs(full_checkpoint_tfs)
+        
+        traj = JointTrajectory()
+
+        dt = 2
+        t = 10
+        for i in range(q_checkpoints.shape[1]):
+            traj_point = JointTrajectoryPoint()
+            traj_point.positions = q_checkpoints[:, i]
+            t = t + dt
+            traj_point.time_from_start.secs = t
+            traj.points.append(traj_point)
+ 
         # Your code ends here ------------------------------
 
         assert isinstance(traj, JointTrajectory)
@@ -219,7 +244,7 @@ class YoubotTrajectoryPlanning(object):
         # Your code starts here ------------------------------
 
         # num_points = 5
-        full_checkpoint_tfs = np.zeros((4,4,5,4))
+        full_checkpoint_tfs = np.zeros((4,4,num_points,4))
         # full_checkpoint_tfs = []
         # for j in range(5*num_points):
         # for j in range(4):
@@ -298,14 +323,42 @@ class YoubotTrajectoryPlanning(object):
         
         n = full_checkpoint_tfs.shape[2]        
         q_checkpoints = np.zeros((5, n))
+        # q_checkpoints = []
         # q_checkpoints = np.append(init_joint_position)
-        q0 = init_joint_position
+        q0 = init_joint_position.tolist()
+        # q0 = list(target_joint_positions[:, 0])
+
+        # for i in range(n):
+
+        #     q, error = self.ik_position_only( full_checkpoint_tfs[:,:,i], q0)
+        #     q0 = np.squeeze(q.tolist()).tolist()
+        #     # q_checkpoints.append(q0)
+        #     q_checkpoints[:,i] =  q
+
         for i in range(n):
 
-            position = self.ik_position_only(self, full_checkpoint_tfs[:,:,i], q0)
-            q0 = full_checkpoint_tfs[:,:,i]
-            q_checkpoints = np.append(position.q)
+            error = 100
+            iter = 0
+            while error > 0.0001:
+                q, error = self.ik_position_only( full_checkpoint_tfs[:,:,i], q0)
+                print("Checkpoint: {}".format(i))
+                print("Iter: {}".format(iter))
+                # print(q)
+                print("Error: {}".format(error))
+                iter += 1
+                q0 = np.squeeze(q.tolist()).tolist()
 
+                if (iter > 5000):
+                    q_locl = np.array(q0)
+
+                    for i in range(q_locl.shape[0]):
+                        q_locl[i] = q_locl[i] + np.random.uniform(-1,1)*q_locl[i] 
+
+                    q0 = list(q_locl)
+                    iter = 0
+                # q_checkpoints.append(q0)
+            q_checkpoints[:,i] = q
+            
         # q_checkpoints = np.append(position)
         # Your code ends here ------------------------------
 
@@ -328,12 +381,13 @@ class YoubotTrajectoryPlanning(object):
         alpha = 1
         Pd = pose[:3, 3].ravel()
         q = q0
-        J = YoubotKinematicKDL.get_jacobian(q0)[:3, :]
+        J = self.kdl_youbot.get_jacobian(q0)[:3, :]
         # Take only first 3 rows as position only solution.
-        P = np.array(YoubotKinematicKDL.forward_kinematics(q0))[:3, -1]
+        P = np.array(self.kdl_youbot.forward_kinematics(q0))[:3, -1]
         e = Pd - P.ravel()
         q += alpha * np.matmul(J.T, e)
         error = np.linalg.norm(e)
+        
         # Your code ends here ------------------------------
 
         return q, error

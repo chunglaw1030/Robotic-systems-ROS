@@ -268,7 +268,7 @@ full_checkpoint_tfs = np.block([full_checkpoint_tfs[:,:,:,0],
 # print(tfs.shape)
 
 #
-def ik_position_only(self, pose, q0):
+def ik_position_only(pose, q0):
 	"""This function implements position only inverse kinematics.
 	Args:
 		pose (np.ndarray, 4x4): 4x4 transformations describing the pose of the end-effector position.
@@ -285,9 +285,9 @@ def ik_position_only(self, pose, q0):
 	alpha = 1
 	Pd = pose[:3, 3].ravel()
 	q = q0
-	J = YoubotKinematicKDL.get_jacobian(q0)[:3, :]
+	J = YoubotKinematicKDL().get_jacobian(q0)[:3, :]
 	# Take only first 3 rows as position only solution.
-	P = np.array(YoubotKinematicKDL.forward_kinematics(q0))[:3, -1]
+	P = np.array(YoubotKinematicKDL().forward_kinematics(q0))[:3, -1]
 	e = Pd - P.ravel()
 	q += alpha * np.matmul(J.T, e)
 	error = np.linalg.norm(e)
@@ -297,16 +297,92 @@ def ik_position_only(self, pose, q0):
 
 n = full_checkpoint_tfs.shape[2]        
 q_checkpoints = np.zeros((5, n))
+# q_checkpoints = []
 # q_checkpoints = np.append(init_joint_position)
-q0 = init_joint_position
-for i in range(n):
+# q0 = (target_joint_positions[:, 0]).tolist()
+# q0 = np.array(target_joint_positions[:, 0])
+# q0 = (target_joint_positions[:, 0]).reshape(5,1)
+# q0 = np.zeros((5,1))
+# for j in range(5):
+# 	q0[j,:] = target_joint_positions[j, 0]
+# alpha = 1
+# pose = full_checkpoint_tfs[:,:,18]
+# Pd = pose[:3, 3].ravel()
+# q0 = np.array([0,0,0,0,0])
+q0 = [0,0,0,0,0]
+qq = (target_joint_positions).tolist()
+# J = YoubotKinematicKDL().get_jacobian(q0)[:3, :]
+# P = np.array(YoubotKinematicKDL().forward_kinematics(q0))[:3, -1]
+# e = Pd - P.ravel()
+# q = alpha * np.matmul(J.T, e)
+# for i in range(n):
 
-	position = self.ik_position_only(self, full_checkpoint_tfs[:,:,i], q0)
-	q0 = full_checkpoint_tfs[:,:,i]
-	q_checkpoints = np.append(position.q)
+
+for i in range(20):
+
+	error = 100
+	iter = 0
+	while error > 0.0001:
+		q, error = ik_position_only( full_checkpoint_tfs[:,:,i], q0)
+		print("Checkpoint: {}".format(i))
+		print("Iter: {}".format(iter))
+		# print(q)
+		print("Error: {}".format(error))
+		iter += 1
+		q0 = np.squeeze(q.tolist()).tolist()
+
+		if (iter > 1000):
+			q_locl = np.array(q0)
+
+			for i in range(q_locl.shape[0]):
+				q_locl[i] = q_locl[i] + np.random.uniform(-1,1)*q_locl[i] 
+
+			q0 = list(q_locl)
+			iter = 0
+		# q_checkpoints.append(q0)
+	q_checkpoints[:,i] = q
+	
+
+print(q_checkpoints)
+
+###
+# q_locl = np.array(q0)
+
+# for i in range(q_locl.shape[0]):
+# 	q_locl[i] = q_locl[i] + np.random.uniform(-1,1)*q_locl[i] 
+
+# q_locl = list(q_locl)
+
+# print(q0)
+# print(np.array(q0))
+# print(q_locl)
+###
+
+# 	error = 100
+# 	while error > 0.1:
+# 		q, error = ik_position_only( full_checkpoint_tfs[:,:,i], q0)
+# 		print("Iteration: {}".format(i))
+# 		print(q)
+# 		q0 = np.squeeze(q.tolist()).tolist()
+# 		# q_checkpoints.append(q0)
+# 	q_checkpoints[:,i] =  q
 
 
+# alpha = 1
+# pose = full_checkpoint_tfs[:,:,0]
+# Pd = pose[:3, 3].ravel()
+# # q0 = np.array([0,0,0,0,0])
+# q0 = [0,0,0,0,0]
+# J = YoubotKinematicKDL().get_jacobian(q0)[:3, :]
+# P = np.array(YoubotKinematicKDL().forward_kinematics(q0))[:3, -1]
+# e = Pd - P.ravel()
+# q = alpha * np.matmul(J.T, e)
+# print(e.dtype)
+# print(q_checkpoints)
+# print(qq)
+# print(q0)
 
+ 
 
 #
 # num_points = 5
