@@ -61,21 +61,24 @@ class Iiwa14DynamicRef(Iiwa14DynamicBase):
         # Your code starts here ----------------------------
         jacobian = np.zeros((6,7))
 
-        zjminus1 = []
-        Pli = []
-        Pjminus1 = []
+        # zjminus1 = []
+        # Pli = []
+        # Pjminus1 = []
+        # Tl = self.forward_kinematics_centre_of_mass(joint_readings, 7) 
+        # Pli = Tl[0:3,3]
 
         for i in range(up_to_joint):
             Tj = self.forward_kinematics(joint_readings, i)
-            Pjminus1.append(Tj[0:3,3])
-            zjminus1.append(Tj[0:3,2])
+            # Pjminus1.append(Tj[0:3,3])
+            # zjminus1.append(Tj[0:3,2])
             Tl = self.forward_kinematics_centre_of_mass(joint_readings, i+1) 
-            Pli.append(Tl[0:3,3])
-           
-        for i in range(up_to_joint):
-
-            jacobian[0:3,i] = np.cross(zjminus1[i] , (Pli[i] - Pjminus1[i] ))
-            jacobian[3:6,i] = zjminus1[i] 
+            # Pli.append(Tl[0:3,3])
+            Pli = Tl[0:3,3]
+        # for i in range(up_to_joint):
+            Pjminus1 = Tj[0:3,3] # position vector of the origin of frame j-1
+            zjminus1 = Tj[0:3,2] # unit vector of axis z of frame j-1 
+            jacobian[0:3,i] = np.cross(zjminus1 , (Pli - Pjminus1))
+            jacobian[3:6,i] = zjminus1 
         # Your code ends here ------------------------------
 
         assert jacobian.shape == (6, 7)
@@ -112,19 +115,19 @@ class Iiwa14DynamicRef(Iiwa14DynamicBase):
         B = np.zeros((7, 7))
         
 	# Your code starts here ------------------------------
-        jacobian = self.get_jacobian_centre_of_mass(joint_readings, 7)
-
+        
         for i in range(7):
             Ioili = np.eye(3)
             Ioili[0,0] = self.Ixyz[i][0]
             Ioili[1,1] = self.Ixyz[i][1]
             Ioili[2,2] = self.Ixyz[i][2]
-            R0G = self.forward_kinematics_centre_of_mass(joint_readings, i)
-            Int_ten = np.matmul(R0G,np.matmul(Ioili,R0G.T))
+            R0G = self.forward_kinematics_centre_of_mass(joint_readings, i+1)[0:3,0:3]
+            Jli = np.dot(np.dot(R0G,Ioili), R0G.T)
             mass = self.mass[i]
-            Jp = jacobian[0:3,i]
-            Jo = jacobian[3:6,i]
-            B += mass*np.dot(np.transpose(Jp),Jp)+ np.dot(np.transpose(Jo),np.dot(Int_ten, Jo))
+            jacobian = self.get_jacobian_centre_of_mass(joint_readings, i+1)
+            Jp = jacobian[0:3,:]
+            Jo = jacobian[3:6,:]
+            B += mass*np.dot(Jp.T,Jp)+ np.dot(Jo.T,np.dot(Jli, Jo))
 
     # Your code ends here ------------------------------
         
@@ -145,15 +148,22 @@ class Iiwa14DynamicRef(Iiwa14DynamicBase):
         assert len(joint_velocities) == 7
 
         # Your code starts here ------------------------------
-        h = 0.000001
+        h = [0.000001]*7
+        b = self.get_B(joint_readings)
+        cij = np.zeros((7,7))
+        C = np.zeros((7,))
         for i in range(7):
             for j in range(7):
                 for k in range(7):
-                    qk = joint_readings.copy()
-                    qi = joint_readings.copy()
-
-
-
+                    qk = joint_readings
+                    qi = joint_readings
+                    bij = self.get_B(list(np.add(qk,h)))
+                    bjk = self.get_B(list(np.add(qi,h)))
+                    bij_deri = (bij[i,j]-b[i,j])/h[0]
+                    bjk_deri = (bjk[j,k]-b[j,k])/h[0]
+                    hijk = bij_deri - 0.5*  bjk_deri
+                    cij[i,j] += hijk * joint_velocities[k]  
+        C = np.dot(cij, joint_velocities).reshape(7,)
 
         # Your code ends here ------------------------------
 
@@ -173,8 +183,22 @@ class Iiwa14DynamicRef(Iiwa14DynamicBase):
         assert len(joint_readings) == 7
 
         # Your code starts here ------------------------------
+        g = np.zeros((7,))
+        g0T = np.array([0,0,-self.g]).reshape(3,1)
+        Pq = 0
+        Pq_h = 0
+        h = 0.000001
+        for i in range(7):
+            Tl = self.forward_kinematics_centre_of_mass(joint_readings, i+1) 
+            Pli = Tl[0:3,3]
+            Pq -= self.mass[i]*np.dot(g0T.T, Pli)
 
+            Tl_h = self.forward_kinematics_centre_of_mass(list(np.add(joint_readings , h)), i+1) 
+            Pli_h = Tl_h[0:3,3]
+            Pq_h -= self.mass[i]*np.dot(g0T.T, Pli_h)
 
+            g_deri = (Pq_h - Pq)/h
+            g[i] = g_deri
         # Your code ends here ------------------------------
 
         assert isinstance(g, np.ndarray)
