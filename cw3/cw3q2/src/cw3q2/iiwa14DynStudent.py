@@ -3,6 +3,8 @@
 import numpy as np
 from iiwa14DynBase import Iiwa14DynamicBase
 
+from iiwa14DynKDL import Iiwa14DynamicKDL
+kdl = Iiwa14DynamicKDL(Iiwa14DynamicBase)
 
 class Iiwa14DynamicRef(Iiwa14DynamicBase):
     def __init__(self):
@@ -148,23 +150,44 @@ class Iiwa14DynamicRef(Iiwa14DynamicBase):
         assert len(joint_velocities) == 7
 
         # Your code starts here ------------------------------
-        h = [0.000001]*7
-        b = self.get_B(joint_readings)
+        # h = [0.000001]*7
+        h = 0.00000001
+        # b = self.get_B(joint_readings)
+        b = kdl.get_B(joint_readings)
         cij = np.zeros((7,7))
         C = np.zeros((7,))
+        qk = joint_readings
+        qi = joint_readings
+        # bij = self.get_B(list(np.add(qk,h)))
+        # bjk = self.get_B(list(np.add(qi,h)))
+        bij = kdl.get_B(list(np.add(qk,h)))
+        bjk = kdl.get_B(list(np.add(qi,h)))
         for i in range(7):
             for j in range(7):
                 for k in range(7):
-                    qk = joint_readings
-                    qi = joint_readings
-                    bij = self.get_B(list(np.add(qk,h)))
-                    bjk = self.get_B(list(np.add(qi,h)))
-                    bij_deri = (bij[i,j]-b[i,j])/h[0]
-                    bjk_deri = (bjk[j,k]-b[j,k])/h[0]
+                    bij_deri = (bij[i,j]-b[i,j])/h
+                    bjk_deri = (bjk[j,k]-b[j,k])/h
                     hijk = bij_deri - 0.5*  bjk_deri
                     cij[i,j] += hijk * joint_velocities[k]  
         C = np.dot(cij, joint_velocities).reshape(7,)
 
+        # C     = np.zeros((7,7))
+        # eps   = 0.000001
+        
+        # for i in range(0,7):
+        #     for j in range(0,7):
+        #         for k in range(0,7):
+        #             B           = self.get_B(joint_readings)
+        #             joints_k    = np.copy(joint_readings)
+        #             joints_k[k] = joints_k[k] + eps
+        #             B_ij        = self.get_B(list(joints_k))
+        #             joint_i     = np.copy(joint_readings)
+        #             joint_i[i]  = joint_i[i] + eps
+        #             B_jk        = self.get_B(list(joint_i))
+        #             x           = (B_ij[i,j]/eps) - (B[i,j]/eps)
+        #             y           = 0.5*((B_jk[j,k]/eps) - (B[j,k]/eps))
+        #             C[i,j]     += (x - y)*joint_velocities[k]
+        # C = np.dot(C, joint_velocities).reshape(7,)
         # Your code ends here ------------------------------
 
         assert isinstance(C, np.ndarray)
