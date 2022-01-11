@@ -41,3 +41,10 @@ print(kdl.get_G(current_pos))
 print('Student g(q): ')
 print(stu.get_G(current_pos))
 
+
+B = kdl.get_B(current_pos)
+Cxqdot = kdl.get_C_times_qdot(current_pos, current_vel)
+G = kdl.get_G(current_pos)
+
+jk = Cxqdot - G
+print(jk)
