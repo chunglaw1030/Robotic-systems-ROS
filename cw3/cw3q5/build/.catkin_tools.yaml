@@ -1,0 +1,6 @@
+devel_space: /home/jonathan/catkin_ws/src/comp0127_lab/cw3/cw3q5/devel
+install: false
+install_space: /home/jonathan/catkin_ws/src/comp0127_lab/cw3/cw3q5/install
+profile: default
+source_space: /home/jonathan/catkin_ws/src/comp0127_lab/cw3/cw3q5/src
+workspace: /home/jonathan/catkin_ws/src/comp0127_lab/cw3/cw3q5

@@ -12,6 +12,7 @@ from visualization_msgs.msg import Marker
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TransformStamped, Quaternion
 from tf2_ros import TransformBroadcaster
+import matplotlib.pyplot as plt
 
 class iiwaDynamics(object):
     def __init__(self):
@@ -23,7 +24,8 @@ class iiwaDynamics(object):
         self.previous_t = 0
 
         self.acc = [] #save acceleration into a list
-        
+        self.time = []
+        self.joint_name = []
         # Create trajectory publisher and a checkpoint publisher to visualize checkpoints
         self.traj_pub = rospy.Publisher('/iiwa/EffortJointInterface_trajectory_controller/command', JointTrajectory,
                                 queue_size=5)
@@ -32,6 +34,11 @@ class iiwaDynamics(object):
         self.sub_dynamics = rospy.Subscriber('/iiwa/joint_states', JointState, self.callback, queue_size=5)
                                              
         self.pose_broadcaster = TransformBroadcaster()
+
+        # self.B = 0
+        # self.Cxqdot = 0
+        # self.G = 0
+        # self.Tau = 0
 
     def load_targets(self):
         """
@@ -50,9 +57,11 @@ class iiwaDynamics(object):
             types.append(bag.get_type_and_topic_info()[1].values()[i][0])
 
         joint_data = [] # create list for joint data 
+        time_from_start = [] #  create list for time from start
         for topic, msg, t in bag.read_messages(topics='/iiwa/EffortJointInterface_trajectory_controller/command'):
             for i in range(3):
                 joint_data.append(msg.points[i].positions) #read position from bag and append to the list , 7x3
+                time_from_start.append(msg.points[i].time_from_start.secs)
             joint_names = msg.joint_names
 
         joint_data = map(list,joint_data)
@@ -64,27 +73,27 @@ class iiwaDynamics(object):
         # Close the bag
         bag.close()
 
-        return joint_data, joint_names
+        return joint_data, joint_names, time_from_start
 
     def run(self):
         """This function is the main run function of the class. When called, it runs question 6 by calling the q6()
         function to get the trajectory. Then, the message is filled out and published to the /command topic.
         """
         print("running trajectory")
+        # rospy.sleep(2.0)
+        joint_data, joint_names, time_from_start = self.load_targets()
+        self.joint_name.append(joint_names)
+        self.final_pos = joint_data[-1]
         rospy.loginfo("Waiting 5 seconds for everything to load up.")
         rospy.sleep(2.0)
-        joint_data, joint_names = self.load_targets()
-
-        rospy.sleep(2.0)
-
-        traj = self.trajectory(joint_data)
+        # sub_dynamics = rospy.Subscriber('/iiwa/joint_states', JointState, self.callback, queue_size=5)
+        traj = self.trajectory(joint_data, time_from_start)
         traj.header.stamp = rospy.Time.now()
         traj.joint_names = joint_names
         self.traj_pub.publish(traj)
         print("publishing trajectory")
-        # acc_plot = self.plot_acceleration()
-
-    def trajectory(self, joint_data):
+        
+    def trajectory(self, joint_data, time_from_start):
         
         traj = JointTrajectory()
 
@@ -95,14 +104,14 @@ class iiwaDynamics(object):
        
         self.publish_checkpoints(checkpoints)
         print("publishing checkpoints")
-
-        dt = 2
-        t = 10
+        # t = 2
+        # dt = 2
         for i in range(len(joint_data)):
             traj_point = JointTrajectoryPoint()
-            traj_point.positions = joint_data[i]
-            t = t + dt
-            traj_point.time_from_start.secs = t
+            traj_point.positions = joint_data[i] # joint position for each point
+            traj_point.time_from_start.secs = time_from_start[i] # load time from start for point
+            # t = t + dt
+            # traj_point.time_from_start.secs = t
             traj.points.append(traj_point)
         
         # Your code ends here ------------------------
@@ -146,7 +155,7 @@ class iiwaDynamics(object):
 
         current_t = msg.header.stamp.secs + msg.header.stamp.nsecs * np.power(10.0, -9)
         joint_velocities = list((np.array(current_joint_position) - np.array(self.previous_joint_position)) / (current_t - self.previous_t))
-
+        kdl_joint_velocities = msg.velocity
         self.previous_joint_position = current_joint_position
         self.previous_t = current_t
         Tau = list(msg.effort)
@@ -155,8 +164,32 @@ class iiwaDynamics(object):
         Cxqdot = self.kdl_iiwa.get_C_times_qdot(current_joint_position, joint_velocities)
         G = self.kdl_iiwa.get_G(current_joint_position)
 
+        
+        # acc = []
+        position_dif = np.array(self.final_pos)- np.array(current_joint_position)
+        norm = np.linalg.norm(position_dif)
         acceleration = self.acceleration(B, Cxqdot, G, Tau)
-        print('Acceleration: {}\n'.format(acceleration))
+        self.acc.append(acceleration)
+        self.time.append(rospy.Time.now().to_sec())
+        print(rospy.Time.now().to_sec(), norm)
+            # print(acceleration)
+        # print(np.array(acceleration))
+
+        if norm < 0.0315:   
+            print("Final Position Reached")
+            rospy.signal_shutdown("Final Position Reached")
+            # acc_plot = self.plot_acceleration()
+            
+
+        # print('Acceleration: {}\n'.format(acceleration))
+
+        # print('velocity: {}'.format(joint_velocities))
+        # print('KDL velocity: {}'.format(list(kdl_joint_velocities)))
+        # while 
+        # while position_dif 
+
+        # print(rospy.Time.now())
+
         # self.acc.append(acceleration)
 
     def acceleration(self, B, Cxqdot, G, Tau):
@@ -166,8 +199,36 @@ class iiwaDynamics(object):
 
         return acc
 
-    def plot_acceleration(self, acceleration):
-        print(acceleration)
+    def plot_acceleration(self):
+
+        print('Plotting Graph')
+
+        acc_list = np.squeeze(self.acc)
+        
+        # print(np.squeeze(self.acc))
+        acc_j1 = [item[0] for item in acc_list]
+        acc_j2 = [item[1] for item in acc_list]
+        acc_j3 = [item[2] for item in acc_list]
+        acc_j4 = [item[3] for item in acc_list]
+        acc_j5 = [item[4] for item in acc_list]
+        acc_j6 = [item[5] for item in acc_list]
+        acc_j7 = [item[6] for item in acc_list]
+
+        time = np.squeeze(self.time)
+        joint_name = np.squeeze(self.joint_name)
+        plt.plot(time, acc_j1, 'orange', label=joint_name[0])
+        plt.plot(time, acc_j2, 'm', label=joint_name[1])
+        plt.plot(time, acc_j3, 'r', label=joint_name[2])
+        plt.plot(time, acc_j4, 'g', label=joint_name[3])
+        plt.plot(time, acc_j5, 'y', label=joint_name[4])
+        plt.plot(time, acc_j6, 'c', label=joint_name[5])
+        plt.plot(time, acc_j7, 'b', label=joint_name[6])
+        plt.xlabel("Time (s)")
+        plt.ylabel("Joint Acceleration ($rad/s^2$)")
+        plt.title("Joint Acceleration of iiwa14 manipulator")
+        plt.legend(loc="upper right")
+        plt.show()
+        plt.savefig('cw3q5_plot.png')
 
     def broadcast_pose(self, pose, suffix):
         """Given a pose transformation matrix, broadcast the pose to the TF tree.
@@ -220,5 +281,6 @@ if __name__ == '__main__':
         iiwa_dynamics = iiwaDynamics()
         iiwa_dynamics.run()
         rospy.spin()
+        rospy.on_shutdown(iiwa_dynamics.plot_acceleration)
     except rospy.ROSInterruptException:
         pass

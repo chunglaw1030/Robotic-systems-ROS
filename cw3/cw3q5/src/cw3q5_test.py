@@ -29,9 +29,11 @@ bag = rosbag.Bag(path + '/bag/cw3q5.bag')
 #     types.append(bag.get_type_and_topic_info()[1].values()[i][0])
 
 joint_data = [] # create list for joint data 
+time_from_start = []
 for topic, msg, t in bag.read_messages(topics='/iiwa/EffortJointInterface_trajectory_controller/command'):
     for i in range(3):
         joint_data.append(msg.points[i].positions) #read position from bag and append to the list , 7x3
+        time_from_start.append(msg.points[i].time_from_start.secs)
     # joint_names.append(msg.joint_names)
     joint_names = msg.joint_names
 joint_data = map(list,joint_data)
@@ -50,3 +52,4 @@ for i in range(len(joint_data)):
 print(checkpoints[:,:,1])
 
 print(len(joint_data))
+print(time_from_start)
