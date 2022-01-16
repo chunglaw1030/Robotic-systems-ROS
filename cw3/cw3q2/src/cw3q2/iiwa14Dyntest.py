@@ -18,13 +18,13 @@ for i in range(7):
 
 
 
-# current_pos = [0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# current_pos = [0.6, 0.7, 0.8, 0.9, 1.1, 1.2, 1.5]
 current_vel = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-print('The current joint position: ')
-print(current_pos)
-print('The current joint velocity: ')
-print(current_vel)
+# print('The current joint position: ')
+# print(current_pos)
+# print('The current joint velocity: ')
+# print(current_vel)
  
 print('B(q): ')
 print(kdl.get_B(current_pos))
@@ -41,10 +41,3 @@ print(kdl.get_G(current_pos))
 print('Student g(q): ')
 print(stu.get_G(current_pos))
 
-
-B = kdl.get_B(current_pos)
-Cxqdot = kdl.get_C_times_qdot(current_pos, current_vel)
-G = kdl.get_G(current_pos)
-
-jk = Cxqdot - G
-print(jk)

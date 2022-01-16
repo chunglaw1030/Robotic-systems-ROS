@@ -119,13 +119,14 @@ class Iiwa14DynamicRef(Iiwa14DynamicBase):
 	# Your code starts here ------------------------------
         
         for i in range(7):
+            mass = self.mass[i]
             Ioili = np.eye(3)
-            Ioili[0,0] = self.Ixyz[i][0]
-            Ioili[1,1] = self.Ixyz[i][1]
-            Ioili[2,2] = self.Ixyz[i][2]
+            Ioili[0,0] = self.Ixyz[i][0] - mass*((self.link_cm[i][1])**2+(self.link_cm[i][2])**2)
+            Ioili[1,1] = self.Ixyz[i][1] - mass*((self.link_cm[i][0])**2+(self.link_cm[i][2])**2)
+            Ioili[2,2] = self.Ixyz[i][2] - mass*((self.link_cm[i][0])**2+(self.link_cm[i][1])**2)
+
             R0G = self.forward_kinematics_centre_of_mass(joint_readings, i+1)[0:3,0:3]
             Jli = np.dot(np.dot(R0G,Ioili), R0G.T)
-            mass = self.mass[i]
             jacobian = self.get_jacobian_centre_of_mass(joint_readings, i+1)
             Jp = jacobian[0:3,:]
             Jo = jacobian[3:6,:]
@@ -150,44 +151,34 @@ class Iiwa14DynamicRef(Iiwa14DynamicBase):
         assert len(joint_velocities) == 7
 
         # Your code starts here ------------------------------
-        # h = [0.000001]*7
+        
+        # The get_B function does not return a B matrix that is same
+        # as one obtained from the KDL class, replace self.get_b with
+        # kdl.get_B by uncommenting out the lines to test this function
+        
         h = 0.00000001
-        # b = self.get_B(joint_readings)
-        b = kdl.get_B(joint_readings)
+
         cij = np.zeros((7,7))
         C = np.zeros((7,))
-        qk = joint_readings
-        qi = joint_readings
-        # bij = self.get_B(list(np.add(qk,h)))
-        # bjk = self.get_B(list(np.add(qi,h)))
-        bij = kdl.get_B(list(np.add(qk,h)))
-        bjk = kdl.get_B(list(np.add(qi,h)))
+        b = self.get_B(joint_readings) # <-- comment this to compare C(q,q_dot)q_dot with KDL
+        # b = kdl.get_B(joint_readings) # <-- uncomment this to compare C(q,q_dot)q_dot with KDL
         for i in range(7):
             for j in range(7):
-                for k in range(7):
+                for k in range(7):                   
+                    qk = np.copy(joint_readings)
+                    qk[k] = qk[k] + h
+                    qi = np.copy(joint_readings)
+                    qi[i] = qi[i] + h
+                    bij = self.get_B(list(np.add(qk,h))) # <-- comment this to compare C(q,q_dot)q_dot with KDL
+                    bjk = self.get_B(list(np.add(qi,h))) # <-- comment this to compare C(q,q_dot)q_dot with KDL
+                    # bij = kdl.get_B(list(qk)) # <-- uncomment this to compare C(q,q_dot)q_dot with KDL
+                    # bjk = kdl.get_B(list(qi)) # <-- uncomment this to compare C(q,q_dot)q_dot with KDL
                     bij_deri = (bij[i,j]-b[i,j])/h
                     bjk_deri = (bjk[j,k]-b[j,k])/h
                     hijk = bij_deri - 0.5*  bjk_deri
                     cij[i,j] += hijk * joint_velocities[k]  
-        C = np.dot(cij, joint_velocities).reshape(7,)
+        C = np.dot(cij, joint_velocities)
 
-        # C     = np.zeros((7,7))
-        # eps   = 0.000001
-        
-        # for i in range(0,7):
-        #     for j in range(0,7):
-        #         for k in range(0,7):
-        #             B           = self.get_B(joint_readings)
-        #             joints_k    = np.copy(joint_readings)
-        #             joints_k[k] = joints_k[k] + eps
-        #             B_ij        = self.get_B(list(joints_k))
-        #             joint_i     = np.copy(joint_readings)
-        #             joint_i[i]  = joint_i[i] + eps
-        #             B_jk        = self.get_B(list(joint_i))
-        #             x           = (B_ij[i,j]/eps) - (B[i,j]/eps)
-        #             y           = 0.5*((B_jk[j,k]/eps) - (B[j,k]/eps))
-        #             C[i,j]     += (x - y)*joint_velocities[k]
-        # C = np.dot(C, joint_velocities).reshape(7,)
         # Your code ends here ------------------------------
 
         assert isinstance(C, np.ndarray)
@@ -207,23 +198,28 @@ class Iiwa14DynamicRef(Iiwa14DynamicBase):
 
         # Your code starts here ------------------------------
         g = np.zeros((7,))
-        g0T = np.array([0,0,-self.g]).reshape(3,1)
-        Pq = 0
-        Pq_h = 0
+        g0T = np.array([0,0,-self.g]).reshape(1,3)
         h = 0.000001
-        for i in range(7):
-            Tl = self.forward_kinematics_centre_of_mass(joint_readings, i+1) 
-            Pli = Tl[0:3,3]
-            Pq -= self.mass[i]*np.dot(g0T.T, Pli)
+        
+        for i in range (7):
+            Pq = 0
+            Pq_h = 0
+            for j in range(7):
+                joint_readings_i = np.copy(joint_readings)
+                joint_readings_i[i] = joint_readings[i] + h
+                Tl = self.forward_kinematics_centre_of_mass(list(joint_readings), j+1) 
+                Pli = Tl[0:3,3]
+                Pq -= self.mass[j]*np.dot(g0T, Pli)
 
-            Tl_h = self.forward_kinematics_centre_of_mass(list(np.add(joint_readings , h)), i+1) 
-            Pli_h = Tl_h[0:3,3]
-            Pq_h -= self.mass[i]*np.dot(g0T.T, Pli_h)
+                Tl_h = self.forward_kinematics_centre_of_mass(list(joint_readings_i ), j+1) 
+                Pli_h = Tl_h[0:3,3]
+                Pq_h -= self.mass[j]*np.dot(g0T, Pli_h)
 
-            g_deri = (Pq_h - Pq)/h
-            g[i] = g_deri
+            g[i] = (Pq_h - Pq)/h
+
         # Your code ends here ------------------------------
 
         assert isinstance(g, np.ndarray)
         assert g.shape == (7,)
         return g
+

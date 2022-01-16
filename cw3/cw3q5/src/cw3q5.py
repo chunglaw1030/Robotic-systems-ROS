@@ -26,19 +26,19 @@ class iiwaDynamics(object):
         self.acc = [] #save acceleration into a list
         self.time = []
         self.joint_name = []
+
         # Create trajectory publisher and a checkpoint publisher to visualize checkpoints
         self.traj_pub = rospy.Publisher('/iiwa/EffortJointInterface_trajectory_controller/command', JointTrajectory,
                                 queue_size=5)
+
+        # The checkpoint publsiher is not required by cw, just for visulisation
         self.checkpoint_pub = rospy.Publisher("/iiwa/checkpoint_positions", Marker, queue_size=100)
         
+        # Subscriber to subcribe to joint state
         self.sub_dynamics = rospy.Subscriber('/iiwa/joint_states', JointState, self.callback, queue_size=5)
-                                             
-        self.pose_broadcaster = TransformBroadcaster()
 
-        # self.B = 0
-        # self.Cxqdot = 0
-        # self.G = 0
-        # self.Tau = 0
+        # Not required by cw, just for verification                            
+        self.pose_broadcaster = TransformBroadcaster()
 
     def load_targets(self):
         """
@@ -62,7 +62,7 @@ class iiwaDynamics(object):
             for i in range(3):
                 joint_data.append(msg.points[i].positions) #read position from bag and append to the list , 7x3
                 time_from_start.append(msg.points[i].time_from_start.secs)
-            joint_names = msg.joint_names
+            joint_names = msg.joint_names 
 
         joint_data = map(list,joint_data)
 
@@ -76,8 +76,8 @@ class iiwaDynamics(object):
         return joint_data, joint_names, time_from_start
 
     def run(self):
-        """This function is the main run function of the class. When called, it runs question 6 by calling the q6()
-        function to get the trajectory. Then, the message is filled out and published to the /command topic.
+        """This function is the main run function of the class. When called, 
+        the trajecotry message is filled out and published.
         """
         print("running trajectory")
         # rospy.sleep(2.0)
@@ -86,7 +86,6 @@ class iiwaDynamics(object):
         self.final_pos = joint_data[-1]
         rospy.loginfo("Waiting 5 seconds for everything to load up.")
         rospy.sleep(2.0)
-        # sub_dynamics = rospy.Subscriber('/iiwa/joint_states', JointState, self.callback, queue_size=5)
         traj = self.trajectory(joint_data, time_from_start)
         traj.header.stamp = rospy.Time.now()
         traj.joint_names = joint_names
@@ -94,7 +93,9 @@ class iiwaDynamics(object):
         print("publishing trajectory")
         
     def trajectory(self, joint_data, time_from_start):
-        
+        """This function fills the trajectory message with the joint 
+            positions and the time from start
+        """
         traj = JointTrajectory()
 
         # this is purely just for visualisation
@@ -104,14 +105,11 @@ class iiwaDynamics(object):
        
         self.publish_checkpoints(checkpoints)
         print("publishing checkpoints")
-        # t = 2
-        # dt = 2
+        
         for i in range(len(joint_data)):
             traj_point = JointTrajectoryPoint()
             traj_point.positions = joint_data[i] # joint position for each point
             traj_point.time_from_start.secs = time_from_start[i] # load time from start for point
-            # t = t + dt
-            # traj_point.time_from_start.secs = t
             traj.points.append(traj_point)
         
         # Your code ends here ------------------------
@@ -149,13 +147,21 @@ class iiwaDynamics(object):
             self.checkpoint_pub.publish(marker)
 
     def callback(self, msg):
+        """Callback function for the subscriber which calculates the acceleration
+            using the recieved position, velocites and effort. This function also
+            shuts down the node when the final position has been reached
+        """
+
         current_joint_position = msg.position
         current_pose = self.kdl_iiwa.forward_kinematics(current_joint_position)
-        self.broadcast_pose(current_pose, 'ee_kdl') 
+        self.broadcast_pose(current_pose, 'ee_kdl') # not required by cw, just for visualisation
 
+        # Calclate joint velocities manually
         current_t = msg.header.stamp.secs + msg.header.stamp.nsecs * np.power(10.0, -9)
         joint_velocities = list((np.array(current_joint_position) - np.array(self.previous_joint_position)) / (current_t - self.previous_t))
-        kdl_joint_velocities = msg.velocity
+        
+        # Using joint velocities from the message
+        msg_joint_velocities = msg.velocity
         self.previous_joint_position = current_joint_position
         self.previous_t = current_t
         Tau = list(msg.effort)
@@ -164,33 +170,18 @@ class iiwaDynamics(object):
         Cxqdot = self.kdl_iiwa.get_C_times_qdot(current_joint_position, joint_velocities)
         G = self.kdl_iiwa.get_G(current_joint_position)
 
-        
-        # acc = []
+        # This tracks wheter the robot has reached the final position or not
         position_dif = np.array(self.final_pos)- np.array(current_joint_position)
-        norm = np.linalg.norm(position_dif)
-        acceleration = self.acceleration(B, Cxqdot, G, Tau)
-        self.acc.append(acceleration)
+        norm = np.linalg.norm(position_dif) # calculate L2 norm 
+        # calculate acceleration
+        acceleration = self.acceleration(B, Cxqdot, G, Tau) 
+        self.acc.append(acceleration)# save the joint accelerations
         self.time.append(rospy.Time.now().to_sec())
-        print(rospy.Time.now().to_sec(), norm)
-            # print(acceleration)
-        # print(np.array(acceleration))
+        # print(rospy.Time.now().to_sec(), norm)
 
-        if norm < 0.0315:   
+        if norm < 0.0315:   # To stop subsribing when final postion is reached
             print("Final Position Reached")
             rospy.signal_shutdown("Final Position Reached")
-            # acc_plot = self.plot_acceleration()
-            
-
-        # print('Acceleration: {}\n'.format(acceleration))
-
-        # print('velocity: {}'.format(joint_velocities))
-        # print('KDL velocity: {}'.format(list(kdl_joint_velocities)))
-        # while 
-        # while position_dif 
-
-        # print(rospy.Time.now())
-
-        # self.acc.append(acceleration)
 
     def acceleration(self, B, Cxqdot, G, Tau):
         
